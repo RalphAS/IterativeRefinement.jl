@@ -10,7 +10,9 @@
 [![codecov.io](http://codecov.io/github/RalphAS/IterativeRefinement.jl/coverage.svg?branch=master)](http://codecov.io/github/RalphAS/IterativeRefinement.jl?branch=master)
 
 This package is an implementation of multi-precision iterative refinement for
-linear matrix-vector problems of the form `A x = b`.
+linear matrix-vector problems of the form
+
+`A x = b`.
 
 # Basic Usage
 ```julia
@@ -18,7 +20,7 @@ julia> using LinearAlgebra, IterativeRefinement
 julia> x, bnorm, bcomp = rfldiv(A,b)
 ```
 This provides an accurate solution vector `x` and estimated bounds
-onf norm-wise and component-wise relative error. By default `LU` decomposition
+on norm-wise and component-wise relative error. By default `LU` decomposition
 is used.
 
 # Advanced Usage
