@@ -61,12 +61,15 @@ function rfeigen(A::AbstractMatrix{T},
                  scale = true,
                  verbose = false
                  ) where {T,Tλ}
+    # CHECKME: is this condition adequate?
     if issymmetric(A) && (Tλ <: Real)
         Tx = Tλ
     else
         Tx = complex(Tλ)
     end
-    x = normalize!((A - λ * I) \ rand(Tx, size(A,1)))
+    # There may not be a sampler for types of interest (hello, Quadmath)
+    # so let's promote.
+    x = normalize!((A - λ * I) \ Tx.(rand(size(A,1))))
     Tr = promote_type(promote_type(Tx,DT))
     res = _rfeigen(A, x, λ, Tr, factor, maxiter, tol, scale, verbose)
     return res
