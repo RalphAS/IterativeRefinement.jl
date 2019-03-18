@@ -1,8 +1,9 @@
+export rfeigen
 
 # Implementation of Dongarra et al., "Improving the accuracy...," SINUM 1983
 
 # find peak index
-function _normalize!(x)
+function _normalizeInf!(x)
     n = length(x)
     s=1
     xm = abs(x[1])
@@ -19,47 +20,77 @@ end
 
 # simple version for an isolated eigenvalue
 """
-    refineeigen(A,x,λ,DT) => xnew, λnew
+    rfeigen(A,x,λ,DT) => λnew, xnew, status
 
 Improve the precision of a computed eigenpair `(x,λ)` for matrix `A`
 via multi-precision iterative refinement, using more-precise real type `DT`.
 
 The higher precision `DT` is only used for residual computation
 (i.e. matrix-vector products), so this can be much faster than a full
-eigensystem solution with `eltype == DT`.  This method works on a
+eigensystem solution with precise eltype.  This method works on a
 single eigenpair, and can fail spectacularly if there is another
 eigenvalue nearby.
 """
-function refineeigen(A::AbstractMatrix{T},
-                     x::AbstractVector{Tx},
-                     λ::Tλ,
-                     DT::Type{<:AbstractFloat} = Float64;
-                     maxiter=5,
-                     factor = lu,
-                     # DT = _widen(T),
-                     scale = true,
-                     verbose = false
-                     ) where {T,Tλ,Tx}
+function rfeigen(A::AbstractMatrix{T},
+                 x::AbstractVector{Tx},
+                 λ::Tλ,
+                 DT::Type{<:AbstractFloat} = widen(real(T));
+                 maxiter=5,
+                 tol=1,
+                 factor = lu,
+                 scale = true,
+                 verbose = false
+                 ) where {T,Tλ,Tx}
     Tr = promote_type(promote_type(Tx,DT),Tλ)
-    res = _refineeigen(A, x, λ, Tr, factor, maxiter, scale, verbose)
-    res
+    res = _rfeigen(A, x, λ, Tr, factor, maxiter, tol, scale, verbose)
+    return res
 end
-function _refineeigen(A::AbstractMatrix{T},
-                     x::AbstractVector{Tx},
-                     λ::Tλ,
-                     DT,
-                     factor = lu,
-                     maxiter = 5,
-                     scale = true,
-                     verbose = false
-                ) where {T,Tx,Tλ}
 
+"""
+    rfeigen(A,λ,DT) => λnew, xnew, status
+
+Like `rfeigen(A,x,λ,DT)`, but initialize `x` via one step of inverse
+iteration.
+"""
+function rfeigen(A::AbstractMatrix{T},
+                 λ::Tλ,
+                 DT::Type{<:AbstractFloat} = widen(real(T));
+                 maxiter=5,
+                 tol=1,
+                 factor = lu,
+                 scale = true,
+                 verbose = false
+                 ) where {T,Tλ}
+    if issymmetric(A) && (Tλ <: Real)
+        Tx = Tλ
+    else
+        Tx = complex(Tλ)
+    end
+    x = normalize!((A - λ * I) \ rand(Tx, size(A,1)))
+    Tr = promote_type(promote_type(Tx,DT))
+    res = _rfeigen(A, x, λ, Tr, factor, maxiter, tol, scale, verbose)
+    return res
+end
+
+function _rfeigen(A::AbstractMatrix{T},
+                      x::AbstractVector{Tx},
+                      λ::Tλ,
+                      ::Type{DT},
+                      factor,
+                      maxiter,
+                      tol,
+                      scale,
+                      verbose
+                      ) where {T,Tx,Tλ,DT}
+
+    status = :unfinished
     λd = convert(DT,λ)
     n = LinearAlgebra.checksquare(A)
+    tol1 = tol * eps(real(DT)) # CHECKME: factor of n?
     Ad = DT.(A)
     B = Ad - λd * I
 
-    s = _normalize!(x)
+    s = _normalizeInf!(x)
     xd = DT.(x)
     B[:,s] .= -xd
     Btmp = A - λ * I # do it over to get the type right
@@ -74,39 +105,67 @@ function _refineeigen(A::AbstractMatrix{T},
     δp = similar(y)
     yp = similar(y)
     rt = similar(y)
+    prevnorm = convert(real(DT),Inf)
     for p = 1:maxiter
         verbose && println("iter $p resnorm: ",norm(r))
         δ = FB \ Tx.(r) # ldiv!(δ,FB,Tx.(r))
         y .= y .+ δ
+        δnorm = norm(δ)
+        ynorm = norm(y)
         yp .= y
-        δp .= δ
         ys = y[s]
+        yp[s] = zero(T)
+        if δnorm > prevnorm
+            if δnorm > 10.0 * prevnorm
+                status = :diverging
+            else
+                status = :stalled
+            end
+            verbose && println("$status at iter $p; early exit")
+            break
+        end
+        prevnorm = δnorm
+        if δnorm / ynorm < tol1
+            status = :converged
+            verbose && println("converged")
+            # println("iter $p ratio ",δnorm / ynorm)
+            break
+        end
+        δp .= δ
         δs = δ[s]
 
         r .= r .- B * DT.(δ)
         δp[s] = zero(T)
-        yp[s] = zero(T)
         r .= r .+ ys * δp .+ δs * y
     end
     xnew = x + yp
     λnew = λ + ys
-    return xnew, λnew
+    return λnew, xnew, status
 end
 
 """
-    refineeigen(A, S::Schur, idxλ, DT, maxiter=5)
+    rfeigen(A, S::Schur, idxλ, DT, maxiter=5) -> vals, vecs, status
 
-Improve the precision of a cluster of eigenvalues of matrix `A`
+Improves the precision of a cluster of eigenvalues of matrix `A`
 via multi-precision iterative refinement, using more-precise real type `DT`.
-This method works on the set of eigenvalues in `S.values` indexed by `idxλ`.
+Returns improved estimates of eigenvalues and vectors generating
+the corresponding invariant subspace.
 
+This method works on the set of eigenvalues in `S.values` indexed by `idxλ`.
+It is designed to handle (nearly) defective cases, but will fail if
+the matrix is extremely non-normal or the initial estimates are poor.
+Note that `S` must be a true Schur decomposition, not a "real Schur".
 """
-function refineeigen(A::AbstractMatrix{T}, S::Schur, idxλ, DT, maxiter=5) where {T}
+function rfeigen(A::AbstractMatrix{T}, S::Schur{TS}, idxλ,
+                 DT = widen(real(T)), maxiter=5;
+                 tol = 1, verbose = false) where {T, TS <: Complex}
     n = size(A,1)
     m = length(idxλ)
     λ = [S.values[idxλ[i]] for i in 1:m]
     Tw = promote_type(T,eltype(λ))
     DTw = promote_type(DT,Tw)
+    tol1 = tol * eps(real(DT)) # CHECKME: factor of n?
+    status = :unfinished
 
     # compute X, M
     # X is an adequately-conditioned set spanning the invariant subspace
@@ -167,9 +226,11 @@ function refineeigen(A::AbstractMatrix{T}, S::Schur, idxλ, DT, maxiter=5) where
     end
 
     λd = DTw.(λ)
-    Ad = DT.(A)
+    Ad = DTw.(A)
     Xd = DTw.(X)
     Md = DTw.(M)
+    # TODO: if cluster is tight enough, only need a singleton B
+    # How tight is tight enough?
     B = Vector{Matrix{DTw}}(undef, m)
     for j=1:m
         B[j] = Ad - λd[j] * I
@@ -187,7 +248,7 @@ function refineeigen(A::AbstractMatrix{T}, S::Schur, idxλ, DT, maxiter=5) where
             r[:,j] .= r[:,j] .+ M[i,j] * Xd[:,i]
         end
     end
-    println("at iter 0 res norm = ", norm(r))
+    verbose && println("at iter 0 res norm = ", norm(r))
     FB0 = lu(Tw.(B[1]))
     FB = Vector{typeof(FB0)}(undef, m)
     FB[1] = FB0
@@ -200,13 +261,16 @@ function refineeigen(A::AbstractMatrix{T}, S::Schur, idxλ, DT, maxiter=5) where
     ys = zeros(Tw, m, m)
     δp = zeros(Tw, n, m)
     δs = zeros(Tw, m, m)
+    prevnorm = convert(real(DT),Inf)
     for p=1:maxiter
+        δnorm = zero(real(DT))
         for j=1:m
             rhs = Tw.(r[:,j])
             # for jj=1:j
             #    rhs -= M[jj,j] * yp[:,jj]
             # end
             δ = FB[j] \ rhs
+            δnorm += norm(δ)
             y[:,j] .+= δ
             yp[:,j] .= y[:,j]
             δp[:,j] .= δ
@@ -217,6 +281,16 @@ function refineeigen(A::AbstractMatrix{T}, S::Schur, idxλ, DT, maxiter=5) where
             end
             r[:,j] .= (r[:,j] - B[j] * DTw.(δ))
         end
+        if δnorm > prevnorm
+            if δnorm > 10.0 * prevnorm
+                status = :diverging
+            else
+                status = :stalled
+            end
+            verbose && println("$status at iter $p; early exit")
+            break
+        end
+        prevnorm = δnorm
         for j=1:m
             for jj=1:m
                 r[:,j] .= r[:,j] + (DTw(ys[jj,j]) * DTw.(δp[:,jj])
@@ -232,17 +306,23 @@ function refineeigen(A::AbstractMatrix{T}, S::Schur, idxλ, DT, maxiter=5) where
                 ys[i,j] = y[s[i],j]
             end
         end
-        println("at iter $p res norm = ", norm(r))
-        println("ew: ",eigvals(Md + DTw.(ys)))
-        println("DP subspace error: ",
+        verbose && println("at iter $p res norm = ", norm(r))
+        # println("ew: ",eigvals(Md + DTw.(ys)))
+        verbose && println("DP subspace error: ",
                 norm((Xd + DTw.(yp))*(Md+DTw.(ys)) - Ad * (Xd + DTw.(yp))))
+        ynorm = norm(y)
+        if δnorm / ynorm < tol1
+            status = :converged
+            verbose && println("converged")
+            # println("iter $p ratio ",δnorm / ynorm)
+            break
+        end
     end
     Xnew = X + yp
-    println("final subspace error norm: ", norm(Xnew*(M+ys) - A * Xnew))
+    verbose && println("final subspace error norm: ", norm(Xnew*(M+ys) - A * Xnew))
     λbar = (1/m)*sum(λ)
     Mnew = Tw.(Md + DTw.(ys) - DTw(λbar) * I)
     dλ = eigvals(Mnew)
     λnew = λbar .+ dλ
-    Xnew, λnew
+    λnew, Xnew, status
 end
-

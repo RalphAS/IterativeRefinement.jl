@@ -1,27 +1,18 @@
 using LinearAlgebra, Random
-using DoubleFloats
-using IterativeRefinement
-using LinearAlgebra, Random
 using Test
+using IterativeRefinement
 
-using IterativeRefinement: _widen
+const verbose = (get(ENV,"VERBOSITY","0") == "1")
 
-function mkmat(n,log10κ=5,T=Float32)
-    if T <: Real
-        q1,_ = qr(randn(n,n))
-        q2,_ = qr(randn(n,n))
-    else
-        q1,_ = qr(randn(ComplexF64,n,n))
-        q2,_ = qr(randn(ComplexF64,n,n))
-    end
-    DT = real(T)
-    s = 10.0 .^(-shuffle(0:(n-1))*log10κ/(n-1))
-    A = T.(Matrix(q1)*Diagonal(s)*Matrix(q2)')
-end
+Random.seed!(1101)
+
+include("utils.jl")
+
+include("eigen.jl")
 
 function runone(A::Matrix{T},x0::Vector) where {T}
     n = size(A,1)
-    DT = _widen(T)
+    DT = widen(T)
     # println("wide type is $DT")
     Ad = DT.(A)
     xd = DT.(x0)
@@ -43,14 +34,17 @@ function runone(A::Matrix{T},x0::Vector) where {T}
     F = lu(RAx)
     κcomp = condInfest(RAx,F,a)
     crit = 1 / (max(sqrt(n),10) * eps(real(T)))
-     println("problem difficulty (rel. to convergence criterion):")
-     println("normwise: ", κnorm/crit, " componentwise: ", κcomp/crit)
-
+    if verbose
+        println("problem difficulty (rel. to convergence criterion):")
+        println("normwise: ", κnorm/crit, " componentwise: ", κcomp/crit)
+    end
     xhat,Bnorm,Bcomp = rfldiv(A,b)
     Enorm = norm(xhat-xtrue,Inf)/norm(xtrue,Inf)
     Ecomp = maximum(abs.(xhat-xtrue) ./ abs.(xtrue))
-     println("Bounds: $Bnorm $Bcomp")
-     println("Errors: $Enorm $Ecomp")
+    if verbose
+        println("Bounds: $Bnorm $Bcomp")
+        println("Errors: $Enorm $Ecomp")
+    end
     if Bnorm > 0.1
         @test κcomp > 100 * crit
     else
@@ -66,8 +60,7 @@ function runone(A::Matrix{T},x0::Vector) where {T}
     end
 end
 
-Random.seed!(1101)
-
+# pick log10(condition-number) for various cases
 function lkval(class,T)
     if class == :easy
         if real(T) <: Float32
@@ -83,9 +76,9 @@ function lkval(class,T)
         end
     elseif class == :painful
         if real(T) <: Float32
-            return 10.0
+            return 9.0
         elseif real(T) <: Float64
-            return 20.0
+            return 18.0
         end
     end
     throw(ArgumentError("undefined lkval"))
@@ -101,7 +94,7 @@ end
     x = rand(T,n)
     b = A * x
     # basic usage for comparison
-    x1, bn1, bc1 = rfldiv(A,b; verbosity=2)
+    x1, bn1, bc1 = rfldiv(A,b)
 
     # example of use with precomputed factor
     Rv, Cv = equilibrators(A)
@@ -135,6 +128,8 @@ end
 end
 
 @testset "badly-conditioned $T" for T in (Float32, Float64, ComplexF32, ComplexF64)
+    # We don't test for convergence failure here because
+    # the method occasionally works in this regime.
     for n in [10,30,100]
         A = mkmat(n,lkval(:painful,T),T)
         x = rand(n)

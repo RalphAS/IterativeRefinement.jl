@@ -2,19 +2,10 @@ module IterativeRefinement
 # this file is part of IterativeRefinement.jl, released under the MIT Expat license.
 
 using LinearAlgebra
-using DoubleFloats
 
 export rfldiv, equilibrators, condInfest
 
 include("infra.jl")
-
-
-_widen(::Type{Float32}) = Float64
-_widen(::Type{ComplexF32}) = ComplexF64
-_widen(::Type{Float64}) = Double64
-_widen(::Type{ComplexF64}) = Complex{Double64}
-_widen(::Type{Double64}) = BigFloat
-_widen(::Type{Complex{Double64}}) = Complex{BigFloat}
 
 # Algorithm 3 from
 # J.Demmel et al., "Error bounds from extra precise iterative refinement",
@@ -40,8 +31,7 @@ If the problem is so ill-conditioned that a good solution is unrealizable,
 
 ## Keywords
 
-- `DT`: higher-precision type for refinement; defaults to `Float64`
-  if the `eltype` of `A` and `b` is `Float32`, `Double64` for `Float64`, etc.
+- `DT`: higher-precision type for refinement; defaults to `widen(eltype(A))`
 - `verbosity`: 0(default): quiet, 1: report on iterations, 2: details.
 - `equilibrate::Bool`: whether the function should equilibrate `A`
   (default `true`).
@@ -60,7 +50,7 @@ Uses the algorithm of Demmel et al. ACM TOMS, 32, 325 (2006).
 function rfldiv(A::AbstractMatrix{T},
                 b::AbstractVector{T},
                 factor = lu;
-                DT = _widen(T), maxiter=20, tol=max(10,sqrt(size(A,1))),
+                DT = widen(T), maxiter=20, tol=max(10,sqrt(size(A,1))),
                 equilibrate = true,
                 verbosity = 0,
                 ρthresh = 0.5, # "what Wilkinson used"
@@ -285,5 +275,5 @@ function rfldiv(A::AbstractMatrix{T},
     end
 end
 
-
+include("eigen.jl")
 end # module
