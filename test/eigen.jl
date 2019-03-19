@@ -51,7 +51,6 @@ end
             if length(idx) != k
                 @goto retry
             end
-            println("n=$n k=$k A[1,1]=",A[1,1])
             e = eps(real(T))
             if verbose
                 ewerrs = [minimum(abs.(S.values[j] .- ew)) for j in idx]

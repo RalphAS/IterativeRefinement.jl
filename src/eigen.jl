@@ -284,7 +284,8 @@ function rfeigen(A::AbstractMatrix{T}, S::Schur{TS}, idxλ,
             end
             r[:,j] .= (r[:,j] - B[j] * DTw.(δ))
         end
-        if δnorm > prevnorm
+        # there are occasional strange transients
+        if (p > 3) && (δnorm > prevnorm)
             if δnorm > 10.0 * prevnorm
                 status = :diverging
             else
