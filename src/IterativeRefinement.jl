@@ -3,7 +3,7 @@ module IterativeRefinement
 
 using LinearAlgebra
 
-export rfldiv, equilibrators, condInfest
+export rfldiv, equilibrators, condInfest, rfeigen
 
 include("infra.jl")
 

@@ -1,4 +1,3 @@
-export rfeigen
 
 # Implementation of Dongarra et al., "Improving the accuracy...," SINUM 1983
 

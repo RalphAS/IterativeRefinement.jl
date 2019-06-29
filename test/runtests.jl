@@ -127,6 +127,8 @@ end
     end
 end
 
+@info "The next block of tests is expected to produce warnings"
+
 @testset "badly-conditioned $T" for T in (Float32, Float64, ComplexF32, ComplexF64)
     # We don't test for convergence failure here because
     # the method occasionally works in this regime.
@@ -136,4 +138,3 @@ end
         runone(A,x)
     end
 end
-
