@@ -8,9 +8,7 @@ Random.seed!(1101)
 
 include("utils.jl")
 
-include("eigen.jl")
-
-function runone(A::Matrix{T},x0::Vector) where {T}
+function runone(A::Matrix{T},x0::AbstractVector) where {T}
     n = size(A,1)
     DT = widen(T)
     # println("wide type is $DT")
@@ -38,7 +36,8 @@ function runone(A::Matrix{T},x0::Vector) where {T}
         println("problem difficulty (rel. to convergence criterion):")
         println("normwise: ", κnorm/crit, " componentwise: ", κcomp/crit)
     end
-    xhat,Bnorm,Bcomp = rfldiv(A,b)
+    xhat,Bnorm,Bcomp = @inferred(rfldiv(A,b))
+    # xhat,Bnorm,Bcomp = rfldiv(A,b)
     Enorm = norm(xhat-xtrue,Inf)/norm(xtrue,Inf)
     Ecomp = maximum(abs.(xhat-xtrue) ./ abs.(xtrue))
     if verbose
@@ -82,6 +81,30 @@ function lkval(class,T)
         end
     end
     throw(ArgumentError("undefined lkval"))
+end
+
+@testset "matrix rhs $T" for T in (Float32, Float64, ComplexF32, ComplexF64)
+    for n in [10]
+        A = mkmat(n,lkval(:easy,T),T)
+        nrhs = 3
+        X = rand(T,n,nrhs)
+        B = copy(X)
+        X1 = copy(X)
+        bn1 = zeros(T,nrhs)
+        bc1 = zeros(T,nrhs)
+        # check validity w/ view arg (someday maybe more tricky AbstractArrays)
+        runone(A,view(X,:,2))
+        for j=1:nrhs
+            x,bnorm,bcomp = @inferred(rfldiv(A,view(X,:,j)))
+            X1[:,j] .= x
+            bn1[j] = bnorm
+            bc1[j] = bcomp
+        end
+        X2, bn2, bc2 = @inferred(rfldiv(A,B))
+        @test X1 ≈ X2
+        @test bn1 ≈ bn2
+        @test bc1 ≈ bc2
+    end
 end
 
 @testset "preprocessed args" begin
@@ -138,3 +161,6 @@ end
         runone(A,x)
     end
 end
+
+include("eigen.jl")
+

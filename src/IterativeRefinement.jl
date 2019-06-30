@@ -13,7 +13,7 @@ include("infra.jl")
 # ACM TOMS, 32, 325 (2006) (henceforth "the paper").
 
 """
-    rfldiv(A,b,f=lu; kwargs...) -> x,bnorm,bcomp
+    rfldiv(A,b,f=lu; kwargs...) -> x,bnorm,bcomp,flags
 
 Compute an accurate solution to a linear system ``A x = b`` using
 extra-precise iterative refinement, with error bounds.
@@ -23,6 +23,8 @@ and maximum componentwise relative error estimate `bcomp`.
 Specifically,  `bnorm` is an estimate of  ``‖xtrue - x‖ / ‖x‖`` (max norms).
 If the problem is so ill-conditioned that a good solution is unrealizable,
 `bnorm` and `bcomp` are set to unity (unless `expert`).
+`flags` contains convergence diagnostics potentially interesting to
+specialists.
 
 # Arguments
 - `A`: a matrix,
@@ -48,9 +50,10 @@ provided as keyword arguments; no check for consistency is done here.
 Uses the algorithm of Demmel et al. ACM TOMS, 32, 325 (2006).
 """
 function rfldiv(A::AbstractMatrix{T},
-                b::AbstractVector{T},
+                b::AbstractVecOrMat{T},
                 factor = lu;
-                DT = widen(T), maxiter=20, tol=max(10,sqrt(size(A,1))),
+                DT = widen(T),
+                maxiter=20, tol=max(10.0,sqrt(size(A,1))),
                 equilibrate = true,
                 verbosity = 0,
                 ρthresh = 0.5, # "what Wilkinson used"
@@ -58,17 +61,29 @@ function rfldiv(A::AbstractMatrix{T},
                 κ = -one(real(T)),
                 F::Union{Nothing, Factorization} = nothing
                 ) where {T}
+    RT = real(T)
+    rfldiv_(A,b,lu,DT,RT,maxiter,tol,equilibrate,verbosity,ρthresh,expert,κ,F)
+end
+function rfldiv_(A::AbstractMatrix{T},
+                 b::AbstractVecOrMat{T},
+                 factor,
+                 ::Type{DT},
+                 ::Type{RT},
+                 maxiter, tol, equilibrate, verbosity, ρthresh, expert, κ, F
+                ) where {T, DT, RT}
     # maxiter is ithresh in paper
     # tol is γ in paper
 
     m,n = size(A,1), size(A,2)
-    if length(b) != m
-        throw(DimensionMismatch("first dimension of A, $n, does not match length of b, $(length(b))"))
+    if size(b,1) != m
+        throw(DimensionMismatch("first dimension of A, $n, does not match that of b, $(size(b,1))"))
     end
-    cvtok = true
-    RT = real(T)
+    nrhs = size(b,2)
 
-    ϵw = 1 / (RT(2)^precision(RT)) # typically eps(T) / 2
+    cvtok = true
+
+    # the use of this variable in closures subverts inference, as of v1.1
+    ϵw::RT = RT(2)^(-precision(RT)) # typically eps(T) / 2
     tol1 = 1 / (tol * ϵw) # $1/γϵ_w$ in the paper
 
     if equilibrate
@@ -83,11 +98,9 @@ function rfldiv(A::AbstractMatrix{T},
         C = Diagonal(Cv)
         R = Diagonal(Rv)
         As = R * A * C
-        bs = R * b
     else
         C = I
         As = A
-        bs = b
     end
 
     local Asd
@@ -98,7 +111,6 @@ function rfldiv(A::AbstractMatrix{T},
     end
     cvtok || throw(ArgumentError("unable to convert to "
                                  * "designated wide type $DT"))
-    bd = DT.(bs)
 
     if F === nothing
         Fs = factor(As)
@@ -116,19 +128,24 @@ function rfldiv(A::AbstractMatrix{T},
         κs = κ
     end
 
+    dzthresh = 1/4 # "works well for binary arithmetic"
+
     nsingle = 1
     ndouble = 0
-    y = Fs \ bs
     relnormx = relnormz = RT(Inf)
     dxnorm = dznorm = RT(Inf)
     ρmax_x = ρmax_z = zero(RT)
     xstate = :working
     zstate = :unstable
     yscheme = :single
-
-    dzthresh = 1/4 # "works well for binary arithmetic"
     incrprec = false
 
+    if nrhs > 1
+        X = zeros(T,n,nrhs)
+        normwisebounds = zeros(RT,nrhs)
+        termwisebounds = zeros(RT,nrhs)
+        flagss = zeros(Int,3,nrhs)
+    end
 
     function newxstate(state, xnorm, dxnorm, dxprev)
         curnorm = relnormx
@@ -192,6 +209,19 @@ function rfldiv(A::AbstractMatrix{T},
         state, ρmax_z, curnorm
     end
 
+    # simple "for" loop w/o scoping
+    irhs = 1
+
+    @label NEXTRHS
+
+    if equil
+        bs = R * b[:,irhs]
+    else
+        bs = b[:,irhs]
+    end
+    bd = DT.(bs)
+    y = Fs \ bs
+
     local yd, xnorm
     for iter=1:maxiter
         # compute residual in appropriate precision
@@ -246,11 +276,11 @@ function rfldiv(A::AbstractMatrix{T},
     if zstate == :working
         relnormz = dznorm
     end
-    x = C * y
+    x::Vector{T} = C * y
     min1 = max(10,sqrt(n)) * ϵw # value from paper
     min2 = ϵw
-    normwisebound = max( relnormx/(1-ρmax_x), min2)
-    termwisebound = max( relnormz/(1-ρmax_z), min1)
+    normwisebound = RT(max( relnormx/(1-ρmax_x), min2))
+    termwisebound = RT(max( relnormz/(1-ρmax_z), min1))
     if !expert
         flag = false
         if normwisebound > sqrt(ϵw)
@@ -267,12 +297,43 @@ function rfldiv(A::AbstractMatrix{T},
     end
     fval = Dict(:converged => 0, :working => 1,
                 :noprogress => 2, :unstable => 3)
-    if expert
-        flags = [10*fval[xstate]+fval[zstate],nsingle,ndouble]
-        return (x, normwisebound, termwisebound, flags)
+    flags = [10*fval[xstate]+fval[zstate],nsingle,ndouble]
+
+    # let's see if we can make this type-stable.
+    if !(b isa AbstractVector)
+
+        X[:,irhs] .= x
+        normwisebounds[irhs] = normwisebound
+        termwisebounds[irhs] = termwisebound
+        flagss[:,irhs] .= flags
+
+        if irhs == nrhs
+            return (X, normwisebounds, termwisebounds, flagss)
+        end
+
     else
-        return (x, normwisebound, termwisebound)
+        # return (X, normwisebounds, termwisebounds, flagss)
+        # take that, you poor confused compiler!
+        nb::RT = convert(RT,normwisebound)
+        tb::RT = convert(RT,termwisebound)
+        ff::Vector{Int} = convert.(Int,flags)
+        return x, nb, tb, ff
     end
+
+    # re-initialize state
+    nsingle = 1
+    ndouble = 0
+    relnormx = relnormz = RT(Inf)
+    dxnorm = dznorm = RT(Inf)
+    ρmax_x = ρmax_z = zero(RT)
+    xstate = :working
+    zstate = :unstable
+    yscheme = :single
+    incrprec = false
+
+    irhs += 1
+    @goto NEXTRHS
+    # no path to this location
 end
 
 include("eigen.jl")
