@@ -1,5 +1,6 @@
 using LinearAlgebra, Random
 using Test
+using Quadmath
 using IterativeRefinement
 
 const verbose = (get(ENV,"VERBOSITY","0") == "1")
@@ -66,6 +67,8 @@ function lkval(class,T)
             return 5.0
         elseif real(T) <: Float64
             return 13.0
+        elseif real(T) <: Float128
+            return 29.0
         end
     elseif class == :moderate
         if real(T) <: Float32
@@ -107,12 +110,11 @@ end
     end
 end
 
-@testset "preprocessed args" begin
-    T = Float32
-    n = 10
+@testset "preprocessed args $T" for T in (Float32, Float128)
+    n = 16
     A = mkmat(n,lkval(:easy,T),T)
     # make it badly scaled
-    s = 1 / sqrt(sqrt(floatmax(T)))
+    s = 1 / sqrt(floatmax(T))
     A = s * A
     x = rand(T,n)
     b = A * x
@@ -132,6 +134,9 @@ end
     @test cx2 ≈ x1
     @test bn2 ≈ bn1
     @test bc2 ≈ bc1
+    # make sure this was not an empty test
+    x3, bn3, bc3 = @test_logs (:warn, r"no convergence.*") rfldiv(A,b; F=F, κ = κnorm, equilibrate = false)
+    @test ! (x3 ≈ x1)
 end
 
 @testset "well-conditioned $T" for T in (Float32, Float64, ComplexF32, ComplexF64)

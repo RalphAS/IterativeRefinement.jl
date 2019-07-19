@@ -86,7 +86,9 @@ function equilibrators(A::AbstractMatrix{T}) where {T}
     R = zeros(T,m)
     C = zeros(T,n)
     @inbounds for j=1:n
-        R .= max.(R,view(A,:,j))
+        for i=1:m
+            R[i] = max(R[i],abs(A[i,j]))
+        end
     end
     @inbounds for i=1:m
         if R[i] > 0
@@ -95,7 +97,9 @@ function equilibrators(A::AbstractMatrix{T}) where {T}
     end
     R .= 1 ./ R
     @inbounds for i=1:m
-        C .= max.(C,R[i] * view(A,i,:))
+        for j=1:n
+            C[j] = max(C[j],R[i] * abs(A[i,j]))
+        end
     end
     @inbounds for j=1:n
         if C[j] > 0
