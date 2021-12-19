@@ -6,7 +6,7 @@
 ![Lifecycle](https://img.shields.io/badge/lifecycle-retired-orange.svg)
 ![Lifecycle](https://img.shields.io/badge/lifecycle-archived-red.svg)
 ![Lifecycle](https://img.shields.io/badge/lifecycle-dormant-blue.svg) -->
-[![Build Status](https://travis-ci.org/RalphAS/IterativeRefinement.jl.svg?branch=master)](https://travis-ci.org/RalphAS/IterativeRefinement.jl)
+[![GitHub CI Build Status](https://github.com/RalphAS/IterativeRefinement.jl/workflows/CI/badge.svg)](https://github.com/RalphAS/IterativeRefinement.jl/actions)
 [![codecov.io](http://codecov.io/github/RalphAS/IterativeRefinement.jl/coverage.svg?branch=master)](http://codecov.io/github/RalphAS/IterativeRefinement.jl?branch=master)
 
 This package is an implementation of multi-precision iterative refinement for

@@ -26,11 +26,19 @@ function runone(A::Matrix{T},x0::AbstractVector) where {T}
         RA = A
     end
     a = opnorm(RA,Inf)
-    F = lu(RA)
+    F = lu(RA,check=false)
+    # Some version of OpenBLAS gave exact singularity for one of our "random" cases.
+    # Handle gracefully so we can just try again.
+    if F.info != 0
+        return false
+    end
     κnorm = condInfest(RA,F,a)
     RAx = RA*Diagonal(xt)
     a = opnorm(RAx,Inf)
-    F = lu(RAx)
+    F = lu(RAx, check=false)
+    if F.info != 0
+        return false
+    end
     κcomp = condInfest(RAx,F,a)
     crit = 1 / (max(sqrt(n),10) * eps(real(T)))
     if verbose
@@ -58,6 +66,7 @@ function runone(A::Matrix{T},x0::AbstractVector) where {T}
             @test Bcomp < γ * eps(real(T))
         end
     end
+    return true
 end
 
 # pick log10(condition-number) for various cases
@@ -161,9 +170,19 @@ end
     # We don't test for convergence failure here because
     # the method occasionally works in this regime.
     for n in [10,30,100]
-        A = mkmat(n,lkval(:painful,T),T)
-        x = rand(n)
-        runone(A,x)
+        LU_ok = false
+        for j in 1:10
+            A = mkmat(n,lkval(:painful,T),T)
+            x = rand(n)
+            LU_ok = runone(A,x)
+            if LU_ok
+                break
+            end
+        end
+        if !LU_ok
+            @info "failed to find nonsingular example for n=$n"
+            @test_broken LU_ok
+        end
     end
 end
 
