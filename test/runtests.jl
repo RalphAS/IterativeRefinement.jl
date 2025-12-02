@@ -2,8 +2,11 @@ using LinearAlgebra, Random
 using Test
 using Quadmath
 using IterativeRefinement
+using Aqua
 
 const verbose = (get(ENV,"VERBOSITY","0") == "1")
+
+Aqua.test_all(IterativeRefinement)
 
 Random.seed!(1101)
 
