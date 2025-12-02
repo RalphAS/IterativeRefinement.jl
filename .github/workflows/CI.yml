@@ -1,4 +1,7 @@
 name: CI
+concurrency:
+  group: build-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 on:
   pull_request:
   push:
@@ -6,6 +9,15 @@ on:
       - master
     tags: '*'
 jobs:
+  pre_job:
+    # continue-on-error: true # Uncomment once integration is finished
+    runs-on: ubuntu-latest
+    # Map a step output to a job output
+    outputs:
+      should_skip: ${{ steps.skip_check.outputs.should_skip }}
+    steps:
+      - id: skip_check
+        uses: fkirc/skip-duplicate-actions@v5
   test:
     name: Julia ${{ matrix.version }} - ${{ matrix.os }} - ${{ matrix.arch }} - ${{ github.event_name }}
     runs-on: ${{ matrix.os }}
@@ -13,21 +25,16 @@ jobs:
       fail-fast: false
       matrix:
         version:
-          - '1.6'
+          - 'lts'
           - '1'
           - 'nightly'
         os:
           - ubuntu-latest
-          - macOS-latest
-          - windows-latest
-        arch:
-          - x64
     steps:
       - uses: actions/checkout@v4
-      - uses: julia-actions/setup-julia@v1
+      - uses: julia-actions/setup-julia@v2
         with:
           version: ${{ matrix.version }}
-          arch: ${{ matrix.arch }}
       - uses: actions/cache@v3
         env:
           cache-name: cache-artifacts
@@ -44,3 +51,24 @@ jobs:
       - uses: codecov/codecov-action@v3
         with:
           files: lcov.info
+          fail_ci_if_error: false
+  docs:
+    name: Documentation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: '1'
+      - uses: julia-actions/cache@v2
+      - uses: julia-actions/julia-buildpkg@v1
+      - uses: julia-actions/julia-docdeploy@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DOCUMENTER_KEY: ${{ secrets.DOCUMENTER_KEY }}
+      - run: |
+          julia --project=docs -e '
+            using Documenter: DocMeta, doctest
+            using IterativeRefinement
+            DocMeta.setdocmeta!(IterativeRefinement, :DocTestSetup, :(using IterativeRefinement); recursive=true)
+            doctest(IterativeRefinement)'
