@@ -8,6 +8,7 @@
 ![Lifecycle](https://img.shields.io/badge/lifecycle-dormant-blue.svg) -->
 [![GitHub CI Build Status](https://github.com/RalphAS/IterativeRefinement.jl/workflows/CI/badge.svg)](https://github.com/RalphAS/IterativeRefinement.jl/actions)
 [![codecov.io](http://codecov.io/github/RalphAS/IterativeRefinement.jl/coverage.svg?branch=master)](http://codecov.io/github/RalphAS/IterativeRefinement.jl?branch=master)
+[![Documentation](https://img.shields.io/badge/docs-dev-blue.svg)](https://RalphAS.github.io/IterativeRefinement.jl/dev)
 
 This package is an implementation of multi-precision iterative refinement for
 certain dense-matrix linear algebra problems.
@@ -37,7 +38,7 @@ or `Float128` from
 
 # Linear systems
 
-The most mature part of the package provides a function `rfldiv`, which
+Th package provides a function `rfldiv`, which
 handles linear matrix-vector problems of the form
 
 `A x = b`.
