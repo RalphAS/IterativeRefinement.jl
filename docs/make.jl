@@ -1,9 +1,16 @@
 using Documenter, IterativeRefinement, LinearAlgebra
 
+DocMeta.setdocmeta!(IterativeRefinement, :DocTestSetup, :(using IterativeRefinement);
+                    recursive=true)
+
 makedocs(
     modules = [IterativeRefinement],
-    format = Documenter.HTML(prettyurls = get(ENV, "CI", nothing) == true),
     sitename = "IterativeRefinement.jl",
+    format=Documenter.HTML(;
+        prettyurls=get(ENV, "CI", "false") == "true",
+        canonical="https://RalphAS.github.io/IterativeRefinement.jl",
+        assets=String[],
+    ),
     pages = ["Overview" => "index.md",
              "Library" => "library.md"
              ]
@@ -11,5 +18,5 @@ makedocs(
 
 # or maybe just the pkg site?
 deploydocs(
-    repo = "github.com/RalphAS/IterativeRefinement.jl.git",
+    repo = "github.com/RalphAS/IterativeRefinement.jl",
 )

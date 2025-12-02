@@ -4,4 +4,4 @@ IterativeRefinement = "bcb6b82e-7479-5933-8c8e-2e0b909ee6a3"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 
 [compat]
-Documenter = "~0.21"
+Documenter = "0.27"
