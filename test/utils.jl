@@ -98,19 +98,20 @@ construct a matrix with a cluster of eigenvalues with specified condition.
 to have worse condition than the cluster of interest, which may be
 undesirable.)
 """
-function mkmat_cond(n, targets, cond, ::Type{T}; lbdiag=false, verbose=false) where T
+function mkmat_cond(n, targets, cond, ::Type{T};
+                    lbdiag=false, verbose=false, fac22=1) where T
     if (cond < 1)
         throw(ArgumentError("condition cannot be < 1"))
     end
     k = length(targets)
     verbose && println("Matrix{$T} N=$n $k-cluster w/ cond $cond")
     Tw = (T <: Real) ? Float64 : ComplexF64
+    roffset = (T <: Real) ? 1/T(2) : (1+im)/T(2)
     A11 = diagm(0=>Tw.(targets)) + triu(rand(Tw,k,k),1)
-    ews = rand(n-k)
     if lbdiag
-        A22 = diagm(0=>rand(Tw,n-k))
+        A22 = fac22 * diagm(0=>(rand(Tw,n-k) .- roffset))
     else
-        A22 = triu(rand(Tw,n-k,n-k))
+        A22 = fac22 * triu((rand(Tw,n-k,n-k) .- roffset))
     end
     R = rand(Tw,k,n-k)
     condr = sqrt(cond^2 - 1.0)

@@ -74,6 +74,7 @@ end
     tol = 20.0
     for n in [5,10,32]
         for k in [2,3]
+            # testset seems to screw with scope, so revert to ancient practice
             @label retry
             A = mkmat_multiple(n,k,etarget,dmin,T)
             # we need a true Schur here
@@ -91,6 +92,44 @@ end
                 println("initial errors ", ewerrs / (e * n))
             end
             newew, newvecs = rfeigen(A, S, idx, DT, maxit)
+            ewerrs = [minimum(abs.(newew[j] .- ew)) for j in 1:k]
+            if verbose
+                println("final errors ", ewerrs / (e * n))
+            end
+            @test maximum(ewerrs) / abs(etarget) < tol * e * n
+        end
+    end
+end
+
+using ArnoldiMethod: partialschur
+
+@testset "eigenvalue cluster $T" for T in (Float32, ComplexF32)
+    DT = widen(T)
+    RT = real(T)
+    etarget = T(2)
+    dmin = RT(1e3) * eps(RT)
+    maxit = 5
+    tol = 20.0
+    bcond = RT(100)
+    for n in [200]
+        for k in [2,3]
+            etargets = etarget * (T(1) .+ dmin * collect(0:k-1))
+            @label retry
+            A = mkmat_cond(n,etargets,bcond,T; fac22=0.1)
+            ps,_ = partialschur(A, nev=3*k)
+            Ad = convert.(DT,A)
+            ew = eigvals(Ad)
+            idx = findall(abs.(ps.eigenvalues .- etarget) .< 0.2)
+            # don't try if A is so nonnormal that initial estimates are bad
+            if length(idx) != k
+                @goto retry
+            end
+            e = eps(real(T))
+            if verbose
+                ewerrs = [minimum(abs.(ps.eigenvalues[j] .- ew)) for j in idx]
+                println("initial errors ", ewerrs / (e * n))
+            end
+            newew, newvecs = rfeigen(A, ps, idx, DT, maxit)
             ewerrs = [minimum(abs.(newew[j] .- ew)) for j in 1:k]
             if verbose
                 println("final errors ", ewerrs / (e * n))

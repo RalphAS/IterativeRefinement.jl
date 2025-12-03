@@ -39,7 +39,7 @@ function rfeigen(A::AbstractMatrix{T},
                  factor = lu,
                  scale = true,
                  verbose = false
-                 ) where {T,Tλ,Tx}
+                 ) where {T,Tλ <: Union{Real,Complex},Tx}
     Tr = promote_type(promote_type(Tx,DT),Tλ)
     res = _rfeigen(A, x, λ, Tr, factor, maxiter, tol, scale, verbose)
     return res
@@ -59,7 +59,7 @@ function rfeigen(A::AbstractMatrix{T},
                  factor = lu,
                  scale = true,
                  verbose = false
-                 ) where {T,Tλ}
+                 ) where {T,Tλ <: Union{Real,Complex}}
     # CHECKME: is this condition adequate?
     if issymmetric(A) && (Tλ <: Real)
         Tx = Tλ
@@ -148,20 +148,25 @@ end
 """
     rfeigen(A, S::Schur, idxλ, DT, maxiter=5) -> vals, vecs, status
 
-Improves the precision of a cluster of eigenvalues of matrix `A`
-via multi-precision iterative refinement, using more-precise real type `DT`.
+Improves the precision of a cluster of eigenvalues of square matrix `A`
+via multi-precision iterative refinement, using more-precise real type `DT`,
+using a pre-computed Schur decomposition `S`.
 Returns improved estimates of eigenvalues and vectors generating
 the corresponding invariant subspace.
 
 This method works on the set of eigenvalues in `S.values` indexed by `idxλ`.
 It is designed to handle (nearly) defective cases, but will fail if
 the matrix is extremely non-normal or the initial estimates are poor.
-Note that `S` must be a true Schur decomposition, not a "real Schur".
+
+If `S` is a quasi-triangular "real Schur", it will be converted to
+a complex upper-triangular Schur decomposition. `S` may be a partial
+decomposition (i.e. fewer than `size(A,1)` vectors).
 """
 function rfeigen(A::AbstractMatrix{T}, S::Schur{TS}, idxλ,
                  DT = widen(real(T)), maxiter=5;
                  tol = 1, verbose = false) where {T, TS <: Complex}
     n = size(A,1)
+    ns = size(S.T,1)
     m = length(idxλ)
     λ = [S.values[idxλ[i]] for i in 1:m]
     Tw = promote_type(T,eltype(λ))
@@ -174,8 +179,8 @@ function rfeigen(A::AbstractMatrix{T}, S::Schur{TS}, idxλ,
     # M is an upper-triangular matrix of mixing coefficients
 
     # Most of the work is in the space of Schur vectors
-    Z = zeros(Tw, n, m)
-    z = zeros(Tw, n)
+    Z = zeros(Tw, ns, m)
+    z = zeros(Tw, ns)
     idxz = Vector{Int}(undef, m)
 
     k = idxλ[1]
@@ -195,7 +200,9 @@ function rfeigen(A::AbstractMatrix{T}, S::Schur{TS}, idxλ,
     for l=2:m
         kp = k
         k = idxλ[l]
-        @assert k > kp
+        if k <= kp
+            throw(ArgumentError("idxλ must be an increasing sequence"))
+        end
         x0 = (S.T[1:k-1,1:k-1] - λ[l]*I) \ S.T[1:k-1,k]
         X1 = (S.T[1:k-1,1:k-1] - λ[l]*I) \ Z[1:k-1,1:l-1]
         z[1:k-1] .= -x0
@@ -328,4 +335,10 @@ function rfeigen(A::AbstractMatrix{T}, S::Schur{TS}, idxλ,
     dλ = eigvals(Mnew)
     λnew = λbar .+ dλ
     λnew, Xnew, status
+end
+
+function rfeigen(A::AbstractMatrix{T}, S::Schur{TS}, idxλ, DT = widen(real(T)), maxiter=5;
+                 kwargs...) where {T, TS <: Real}
+    Sc = Schur{Complex{TS}}(S)
+    rfeigen(A, Sc, idxλ, DT, maxiter; kwargs...)
 end
