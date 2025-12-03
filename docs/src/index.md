@@ -1,7 +1,7 @@
 # IterativeRefinement
 
 This package is an implementation of multi-precision iterative refinement for
-certain dense-matrix linear algebra problems.
+certain dense-matrix linear algebra problems (linear solves and eigensystems).
 
 ## Background
 The purpose of iterative refinement (IR) is to improve the accuracy of a
@@ -26,14 +26,14 @@ One might alternatively use `Double64` from
 or `Float128` from
 [Quadmath.jl](https://github.com/JuliaMath/Quadmath.jl)
 
-# Linear systems
+## Linear systems
 
 This package provides a function `rfldiv`, which
 handles linear matrix-vector problems of the form
 
 `A x = b`.
 
-## Basic Usage
+### Basic Usage
 ```julia
 julia> using LinearAlgebra, IterativeRefinement
 julia> x, bnorm, bcomp = rfldiv(A,b)
@@ -42,13 +42,13 @@ This provides an accurate solution vector `x` and estimated bounds
 on norm-wise and component-wise relative error. By default `LU` decomposition
 is used.
 
-## Advanced Usage
+### Advanced Usage
 See the function docstring for details.
 
 If one has several right-hand-sides, one can equilibrate and factor
 `A` in advance; see the tests for an example.
 
-## Reference
+### Reference
 J.Demmel et al., "Error bounds from extra precise iterative refinement,"
 LAPACK Working Note Nr. 165 (2005), also published as
 ACM TOMS, 32, 325 (2006).  The work
@@ -57,7 +57,7 @@ included in some versions of LAPACK.  This implementation is based on
 the paper; minor modifications were introduced based on experimentation.
 To be precise, this package implements Algorithm 3.
 
-# Eigensystems
+## Eigensystems
 
 Additional methods (`rfeigen`) are provided for improving estimates of
 eigenvalue/subspace pairs of the form
@@ -70,10 +70,14 @@ multiple or defective eigenvalues, columns of `X` are generators for the
 corresponding invariant subspace, and the user provides a Schur decomposition
 with a list of indices for the cluster of interest.
 
+One can also use a partial Schur decomposition, e.g. from the
+[ArnoldiMethod.jl](https://github.com/JuliaLinearAlgebra/ArnoldiMethod.jl) package,
+as a base for refined clusters in large systems.
+
 Problem-specific error bound estimates are not yet provided for eigensystems.
 
-## Basic Usage
-### isolated eigenvalue
+### Basic Usage
+#### isolated eigenvalue
 ```julia
 julia> using LinearAlgebra, IterativeRefinement, Quadmath
 julia> E = eigen(A)
@@ -81,7 +85,7 @@ julia> j = your_index_selection()
 julia> λrefined, xrefined = rfeigen(A, E.vectors[:,j], E.values[j], Float128)
 ```
 
-### eigenvalue cluster
+#### eigenvalue cluster
 ```julia
 julia> using LinearAlgebra, IterativeRefinement, Quadmath
 julia> S = schur(A)
